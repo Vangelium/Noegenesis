@@ -1,0 +1,5 @@
+{
+  "name": "Noegenesis: Interactive Fractal Explorer",
+  "description": "An interactive 3D web experience exploring the generation of fractal structures based on Julia and Koch sets, rendered with Three.js. Features flight controls, dynamic detail levels, and audio-visual effects.",
+  "requestFramePermissions": []
+}
