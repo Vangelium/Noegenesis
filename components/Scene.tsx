@@ -1,17 +1,19 @@
 import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
-import { RotationControls, RotationAxis, BodyVisibility, FractalType } from '../types';
+import { RotationControls, RotationAxis, BodyVisibility, FractalType, BaseGeometry } from '../types';
 
 interface SceneProps {
     depth: number;
     fov: number;
     speed: number;
+    baseGeometry: BaseGeometry;
     fractalType: FractalType;
     rotationAxis: RotationAxis;
     rotationControls: RotationControls;
     isDopplerEffect: boolean;
     isPixelView: boolean;
     bodyVisibility: BodyVisibility;
+    isShadowView: boolean;
 }
 
 interface FractalArtifacts {
@@ -30,6 +32,7 @@ const Scene: React.FC<SceneProps> = (props) => {
     const transitionStartTimeRef = useRef<number | null>(null);
     const lastPinchDistance = useRef<number | null>(null);
     const lastTouch = useRef<{ x: number; y: number } | null>(null);
+    const cameraStateBeforeShadowView = useRef<{ position: THREE.Vector3, quaternion: THREE.Quaternion } | null>(null);
 
     useEffect(() => {
         propsRef.current = props;
@@ -55,6 +58,15 @@ const Scene: React.FC<SceneProps> = (props) => {
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.setClearColor(0x000000);
         mountNode.appendChild(renderer.domElement);
+        
+        const shadowPlane = new THREE.Mesh(
+            new THREE.PlaneGeometry(100, 100),
+            new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.5 })
+        );
+        shadowPlane.rotation.x = -Math.PI / 2;
+        shadowPlane.position.y = -15;
+        shadowPlane.receiveShadow = true;
+        scene.add(shadowPlane);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.05);
         scene.add(ambientLight);
@@ -99,14 +111,30 @@ const Scene: React.FC<SceneProps> = (props) => {
             });
         };
 
-        const generateStructure = (currentDepth: number, currentFractalType: FractalType): FractalArtifacts => {
+        const generateStructure = (currentDepth: number, currentFractalType: FractalType, currentBaseGeometry: BaseGeometry): FractalArtifacts => {
             const structureGroup = new THREE.Group();
             scene.add(structureGroup);
             const mainFractalMeshes: THREE.Mesh[] = [];
             const mainLineMeshes: THREE.LineSegments[] = [];
 
             const radius = 7.5;
-            const baseGeometry = new THREE.IcosahedronGeometry(radius, 1);
+            let baseGeometry: THREE.BufferGeometry;
+            switch(currentBaseGeometry) {
+                case 'cube':
+                    baseGeometry = new THREE.BoxGeometry(radius * 1.4, radius * 1.4, radius * 1.4);
+                    break;
+                case 'tetrahedron':
+                    baseGeometry = new THREE.TetrahedronGeometry(radius);
+                    break;
+                case 'octahedron':
+                    baseGeometry = new THREE.OctahedronGeometry(radius);
+                    break;
+                case 'icosahedron':
+                default:
+                    baseGeometry = new THREE.IcosahedronGeometry(radius, 1);
+                    break;
+            }
+
             const positions = baseGeometry.attributes.position;
 
             const mainMaterial = new THREE.MeshStandardMaterial({ color: 0xff8c00, side: THREE.DoubleSide, roughness: 0.5, metalness: 0.1 });
@@ -402,9 +430,10 @@ const Scene: React.FC<SceneProps> = (props) => {
             buildHole(m31, m23, v3, depth - 1, holeList);
         };
         
-        let activeArtifacts = generateStructure(propsRef.current.depth, propsRef.current.fractalType);
+        let activeArtifacts = generateStructure(propsRef.current.depth, propsRef.current.fractalType, propsRef.current.baseGeometry);
         let currentDepth = propsRef.current.depth;
         let currentFractalType = propsRef.current.fractalType;
+        let currentBaseGeometry = propsRef.current.baseGeometry;
 
         const keyState: { [code: string]: boolean } = {};
         const onKeyDown = (e: KeyboardEvent) => { keyState[e.code] = true; };
@@ -414,7 +443,7 @@ const Scene: React.FC<SceneProps> = (props) => {
         
         const euler = new THREE.Euler(0, 0, 0, 'YXZ');
         const onMouseMove = (event: MouseEvent) => {
-            if (document.pointerLockElement === renderer.domElement) {
+            if (document.pointerLockElement === renderer.domElement && !propsRef.current.isShadowView) {
                 euler.setFromQuaternion(camera.quaternion);
                 euler.y -= event.movementX * 0.0007;
                 euler.x -= event.movementY * 0.0007;
@@ -424,7 +453,9 @@ const Scene: React.FC<SceneProps> = (props) => {
         };
         document.addEventListener('mousemove', onMouseMove);
         
-        const onCanvasClick = () => renderer.domElement.requestPointerLock();
+        const onCanvasClick = () => {
+            if(!propsRef.current.isShadowView) renderer.domElement.requestPointerLock()
+        };
         renderer.domElement.addEventListener('click', onCanvasClick);
         
         const getDistance = (touches: TouchList): number => {
@@ -437,6 +468,7 @@ const Scene: React.FC<SceneProps> = (props) => {
         };
 
         const onTouchStart = (event: TouchEvent) => {
+            if (propsRef.current.isShadowView) return;
             if (event.touches.length === 1) {
                 event.preventDefault();
                 lastTouch.current = { x: event.touches[0].pageX, y: event.touches[0].pageY };
@@ -448,6 +480,7 @@ const Scene: React.FC<SceneProps> = (props) => {
         };
 
         const onTouchMove = (event: TouchEvent) => {
+            if (propsRef.current.isShadowView) return;
             if (event.touches.length === 1 && lastTouch.current) {
                 event.preventDefault();
                 const touch = event.touches[0];
@@ -492,7 +525,6 @@ const Scene: React.FC<SceneProps> = (props) => {
             const delta = clock.getDelta();
             const time = clock.getElapsedTime();
 
-            // Handle transition animation
             if (fadingOutGroupRef.current && transitionStartTimeRef.current !== null) {
                 const progress = Math.min((time - transitionStartTimeRef.current) / TRANSITION_DURATION, 1.0);
 
@@ -511,9 +543,32 @@ const Scene: React.FC<SceneProps> = (props) => {
                     });
                 }
             }
+            
+            if (state.isShadowView && cameraStateBeforeShadowView.current === null) {
+                cameraStateBeforeShadowView.current = {
+                    position: camera.position.clone(),
+                    quaternion: camera.quaternion.clone(),
+                };
+            } else if (!state.isShadowView && cameraStateBeforeShadowView.current !== null) {
+                camera.position.lerp(cameraStateBeforeShadowView.current.position, 0.05);
+                camera.quaternion.slerp(cameraStateBeforeShadowView.current.quaternion, 0.05);
+                if (camera.position.distanceTo(cameraStateBeforeShadowView.current.position) < 0.01) {
+                    camera.position.copy(cameraStateBeforeShadowView.current.position);
+                    camera.quaternion.copy(cameraStateBeforeShadowView.current.quaternion);
+                    cameraStateBeforeShadowView.current = null;
+                }
+            }
 
-            // Handle prop changes imperatively
-            if (currentDepth !== state.depth || currentFractalType !== state.fractalType) {
+            if (state.isShadowView) {
+                const targetPosition = new THREE.Vector3(0, -10, 35);
+                const tempCam = new THREE.PerspectiveCamera();
+                tempCam.position.copy(targetPosition);
+                tempCam.lookAt(scene.position);
+                camera.position.lerp(targetPosition, 0.05);
+                camera.quaternion.slerp(tempCam.quaternion, 0.05);
+            }
+
+            if (currentDepth !== state.depth || currentFractalType !== state.fractalType || currentBaseGeometry !== state.baseGeometry) {
                 if (fadingOutGroupRef.current) {
                     scene.remove(fadingOutGroupRef.current);
                     disposeGroup(fadingOutGroupRef.current);
@@ -525,14 +580,15 @@ const Scene: React.FC<SceneProps> = (props) => {
 
                 currentDepth = state.depth;
                 currentFractalType = state.fractalType;
-                const newArtifacts = generateStructure(currentDepth, currentFractalType);
+                currentBaseGeometry = state.baseGeometry;
+                const newArtifacts = generateStructure(currentDepth, currentFractalType, currentBaseGeometry);
                 traverseMaterials(newArtifacts.structureGroup, mat => {
                     mat.transparent = true;
                     mat.opacity = 0;
                 });
                 activeArtifacts = newArtifacts;
             }
-            if (camera.fov !== state.fov) {
+            if (camera.fov !== state.fov && !state.isShadowView) {
                 camera.fov = state.fov;
                 camera.updateProjectionMatrix();
             }
@@ -540,17 +596,21 @@ const Scene: React.FC<SceneProps> = (props) => {
             activeArtifacts.geoideInteriorGroup.visible = state.bodyVisibility.interior;
             activeArtifacts.geoideExteriorGroup.visible = state.bodyVisibility.exterior;
 
-            activeArtifacts.mainFractalMeshes.forEach(m => m.visible = state.isDopplerEffect);
-            activeArtifacts.mainLineMeshes.forEach(m => m.visible = !state.isDopplerEffect);
+            activeArtifacts.mainFractalMeshes.forEach(m => m.visible = !state.isDopplerEffect);
+            activeArtifacts.mainLineMeshes.forEach(m => m.visible = state.isDopplerEffect);
 
             const moveSpeed = 6.0 * delta;
             const rollSpeed = 0.7 * delta;
-            if (keyState['KeyW']) camera.translateZ(-moveSpeed);
-            if (keyState['KeyS']) camera.translateZ(moveSpeed);
-            if (keyState['KeyA']) camera.translateX(-moveSpeed);
-            if (keyState['KeyD']) camera.translateX(moveSpeed);
-            if (keyState['KeyQ']) camera.rotateZ(rollSpeed);
-            if (keyState['KeyE']) camera.rotateZ(-rollSpeed);
+            
+            const controlsEnabled = !state.isShadowView && cameraStateBeforeShadowView.current === null;
+            if (controlsEnabled) {
+                if (keyState['KeyW']) camera.translateZ(-moveSpeed);
+                if (keyState['KeyS']) camera.translateZ(moveSpeed);
+                if (keyState['KeyA']) camera.translateX(-moveSpeed);
+                if (keyState['KeyD']) camera.translateX(moveSpeed);
+                if (keyState['KeyQ']) camera.rotateZ(rollSpeed);
+                if (keyState['KeyE']) camera.rotateZ(-rollSpeed);
+            }
 
             innerLight.position.x = Math.sin(time * 0.35) * 12.0;
             innerLight.position.y = Math.cos(time * 0.25) * 12.0;

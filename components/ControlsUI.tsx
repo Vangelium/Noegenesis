@@ -1,6 +1,6 @@
 import React from 'react';
-import { RotationControls, RotationAxis, BodyVisibility, FractalType } from '../types';
-import { FullscreenIcon, SaveIcon, ResetIcon } from './Icons';
+import { RotationControls, RotationAxis, BodyVisibility, FractalType, BaseGeometry } from '../types';
+import { FullscreenIcon, SaveIcon, ResetIcon, PlayIcon } from './Icons';
 
 interface ControlsUIProps {
     isVisible: boolean;
@@ -10,6 +10,8 @@ interface ControlsUIProps {
     setFov: (value: number) => void;
     speed: number;
     setSpeed: (value: number) => void;
+    baseGeometry: BaseGeometry;
+    setBaseGeometry: (value: BaseGeometry) => void;
     fractalType: FractalType;
     setFractalType: (value: FractalType) => void;
     rotationAxis: RotationAxis;
@@ -21,8 +23,13 @@ interface ControlsUIProps {
     isPixelView: boolean;
     setIsPixelView: (value: boolean) => void;
     setBodyVisibility: (value: BodyVisibility) => void;
-    onSaveSettings: () => void;
+    isShadowView: boolean;
+    setIsShadowView: (value: boolean) => void;
+    isMathHUDVisible: boolean;
+    setIsMathHUDVisible: (value: boolean) => void;
     onResetSettings: () => void;
+    isAnimating: boolean;
+    onPlayAnimation: () => void;
 }
 
 const ControlCheckbox: React.FC<{id: string, label: string, checked: boolean, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void}> = ({id, label, checked, onChange}) => (
@@ -40,9 +47,10 @@ const ControlRadio: React.FC<{id: string, name: string, value: string, label: st
 );
 
 const ControlsUI: React.FC<ControlsUIProps> = ({
-    isVisible, depth, setDepth, fov, setFov, speed, setSpeed, fractalType, setFractalType, rotationAxis, setRotationAxis,
+    isVisible, depth, setDepth, fov, setFov, speed, setSpeed, baseGeometry, setBaseGeometry, fractalType, setFractalType, rotationAxis, setRotationAxis,
     rotationControls, setRotationControls, isDopplerEffect, setIsDopplerEffect, isPixelView,
-    setIsPixelView, setBodyVisibility, onSaveSettings, onResetSettings
+    setIsPixelView, setBodyVisibility, isShadowView, setIsShadowView, isMathHUDVisible, setIsMathHUDVisible, onResetSettings,
+    isAnimating, onPlayAnimation
 }) => {
     
     const handleToggleFullscreen = () => {
@@ -68,6 +76,21 @@ const ControlsUI: React.FC<ControlsUIProps> = ({
             
             <div className="space-y-4">
                 <div className="space-y-2">
+                    <label htmlFor="base-geometry-select" className="block text-sm font-medium text-gray-300">Geometría Base:</label>
+                    <select
+                        id="base-geometry-select"
+                        value={baseGeometry}
+                        onChange={(e) => setBaseGeometry(e.target.value as BaseGeometry)}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-orange-500 focus:border-orange-500 cursor-pointer"
+                    >
+                        <option value="icosahedron">Icosaedro</option>
+                        <option value="cube">Cubo</option>
+                        <option value="tetrahedron">Tetraedro</option>
+                        <option value="octahedron">Octaedro</option>
+                    </select>
+                </div>
+
+                <div className="space-y-2">
                     <p className="text-sm font-medium text-gray-300">Tipo de Fractal:</p>
                     <div className="flex gap-4 flex-wrap">
                         <ControlRadio id="fractal-noegenesis" name="fractal-type" value="noegenesis" label="Noegenesis" checked={fractalType === 'noegenesis'} onChange={(e) => setFractalType(e.target.value as FractalType)} />
@@ -79,8 +102,18 @@ const ControlsUI: React.FC<ControlsUIProps> = ({
                 </div>
 
                 <div>
-                    <label htmlFor="depth-slider" className="block mb-1 text-sm font-medium text-gray-300">Nivel de detalle: <span className="font-bold text-white">{depth}</span></label>
-                    <input type="range" id="depth-slider" min="0" max={maxDepth} value={depth} step="1" onChange={(e) => setDepth(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500" />
+                    <div className="flex justify-between items-center mb-1">
+                        <label htmlFor="depth-slider" className="text-sm font-medium text-gray-300">Nivel de detalle: <span className="font-bold text-white">{depth}</span></label>
+                         <button 
+                            onClick={onPlayAnimation}
+                            disabled={isAnimating}
+                            className="p-1 rounded-full hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            title="Animar construcción"
+                        >
+                            <PlayIcon />
+                        </button>
+                    </div>
+                    <input type="range" id="depth-slider" min="0" max={maxDepth} value={depth} step="1" onChange={(e) => setDepth(Number(e.target.value))} disabled={isAnimating} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500 disabled:opacity-50" />
                 </div>
                 
                 <div>
@@ -124,16 +157,14 @@ const ControlsUI: React.FC<ControlsUIProps> = ({
                  <div className="flex flex-col space-y-2 pt-2 border-t border-gray-700/50">
                      <ControlCheckbox id="doppler-checkbox" label="Activar Efecto Doppler" checked={isDopplerEffect} onChange={(e) => setIsDopplerEffect(e.target.checked)} />
                      <ControlCheckbox id="pixel-view-checkbox" label="Vista Microscópica" checked={isPixelView} onChange={(e) => setIsPixelView(e.target.checked)} />
+                     <ControlCheckbox id="shadow-view-checkbox" label="Vista de Sombra" checked={isShadowView} onChange={(e) => setIsShadowView(e.target.checked)} />
+                     <ControlCheckbox id="math-hud-checkbox" label="Mostrar HUD Matemático" checked={isMathHUDVisible} onChange={(e) => setIsMathHUDVisible(e.target.checked)} />
                  </div>
 
                 <div className="pt-2 border-t border-gray-700/50">
                     <p className="text-sm font-medium text-gray-300 mb-2">Ajustes</p>
                     <div className="flex items-center gap-2">
-                        <button onClick={onSaveSettings} className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded-md transition-colors" title="Guardar ajustes actuales">
-                            <SaveIcon />
-                            Guardar
-                        </button>
-                        <button onClick={onResetSettings} className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded-md transition-colors" title="Restaurar ajustes por defecto">
+                        <button onClick={onResetSettings} className="w-full flex items-center justify-center gap-2 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded-md transition-colors" title="Restaurar ajustes por defecto">
                             <ResetIcon />
                             Reiniciar
                         </button>

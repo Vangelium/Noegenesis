@@ -14,3 +14,5 @@ export interface BodyVisibility {
 }
 
 export type FractalType = 'noegenesis' | 'koch' | 'mandelbrot' | 'julia' | 'hybrid';
+
+export type BaseGeometry = 'icosahedron' | 'cube' | 'tetrahedron' | 'octahedron';
